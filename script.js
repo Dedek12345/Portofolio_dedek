@@ -366,23 +366,16 @@ function showNotification(message, type = 'info') {
     });
 }
 
-// Download CV functionality
+// Download CV functionality (direct link, no fetch to avoid file:// issues)
 function initializeDownloadCV() {
     const downloadBtn = document.getElementById('download-cv');
-    
-    downloadBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        
-        // Show notification
-        showNotification('CV download feature is not yet implemented. Please contact me directly for my CV.', 'info');
-        
-        // Optionally, you could implement actual CV download here
-        // For example, if you have a PDF file:
-        // const link = document.createElement('a');
-        // link.href = 'path/to/cv.pdf';
-        // link.download = 'Dedek_Rahmat_CV.pdf';
-        // link.click();
-    });
+    if (!downloadBtn) return;
+
+    const cvPath = 'assets/Dedek_Rahmat_CV.pdf';
+    // Set direct download attributes so the browser handles it natively
+    downloadBtn.setAttribute('href', cvPath);
+    downloadBtn.setAttribute('download', 'Dedek_Rahmat_CV.pdf');
+    // Do not attach a click handler that prevents default; let the link work normally
 }
 
 // Typing animation for hero title
