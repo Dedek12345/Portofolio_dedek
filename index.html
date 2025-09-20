@@ -400,3 +400,62 @@
     <script src="script.js"></script>
 </body>
 </html>
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Basic CORS
+    const cors = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400',
+      'Cache-Control': 'no-store'
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
+    if (url.pathname === '/hit') {
+      const key = url.searchParams.get('key');
+      if (!key) {
+        return json({ error: 'missing key' }, 400, cors);
+      }
+
+      // Read -> increment -> write (simple, fine for low traffic)
+      const current = await env.COUNTER.get(key);
+      let count = parseInt(current || '0', 10);
+      if (!Number.isFinite(count)) count = 0;
+
+      count += 1;
+      await env.COUNTER.put(key, String(count), { metadata: { updated: Date.now() } });
+
+      return json({ count }, 200, cors);
+    }
+
+    if (url.pathname === '/get') {
+      const key = url.searchParams.get('key');
+      if (!key) {
+        return json({ error: 'missing key' }, 400, cors);
+      }
+      const current = await env.COUNTER.get(key);
+      let count = parseInt(current || '0', 10);
+      if (!Number.isFinite(count)) count = 0;
+      return json({ count }, 200, cors);
+    }
+
+    return new Response('Not found', { status: 404, headers: cors });
+  }
+};
+
+function json(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...extraHeaders
+    }
+  });
+}
