@@ -571,7 +571,10 @@ window.addEventListener('resize', throttle(() => {
     }
 }, 250));
 
-// Page view counter using CountAPI (free, no auth)
+// Konfigurasi Cloudflare Worker (isi dengan URL Worker kamu)
+const WORKER_URL = 'https://YOUR_WORKER_SUBDOMAIN.workers.dev'; // TODO: ganti setelah deploy
+
+// Page view counter: coba Cloudflare Worker dulu, lalu fallback ke CountAPI, lalu badge
 // Setiap reload halaman akan menambah angka (page views).
 let __visitorCounterInitialized = false;
 function initializeVisitorCounter() {
@@ -592,6 +595,7 @@ function initializeVisitorCounter() {
         'https://countapi.xyz'
     ];
     const counterKey = `${counterNamespace}:${originKey}:${pageKey}`;
+    const workerKey = `${counterNamespace}:${originKey}_${pageKey}`;
 
     // Helper to set text with graceful fallback
     const setCountText = (val) => {
@@ -628,6 +632,16 @@ function initializeVisitorCounter() {
         }
     };
 
+    // Hit Cloudflare Worker (prioritas pertama)
+    const hitWorker = async () => {
+        if (!WORKER_URL || WORKER_URL.includes('YOUR_WORKER_SUBDOMAIN')) return null; // belum dikonfigurasi
+        const url = `${WORKER_URL.replace(/\/$/, '')}/hit?key=${encodeURIComponent(workerKey)}&t=${Date.now()}`;
+        const data = await fetchJSON(url, { method: 'GET' }, 5000);
+        if (data && typeof data.count === 'number') return data.count;
+        if (typeof data === 'number') return data; // jika worker mengembalikan angka langsung
+        return null;
+    };
+
     // Ensure key exists on a given base
     const ensureKey = async (base) => {
         const keyPath = `${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
@@ -645,6 +659,15 @@ function initializeVisitorCounter() {
     };
 
     (async () => {
+        // 1) Coba Cloudflare Worker
+        const workerVal = await hitWorker();
+        if (typeof workerVal === 'number') {
+            setCountText(workerVal);
+            try { localStorage.setItem(`${counterKey}:cachedCount`, String(workerVal)); } catch (_) {}
+            return;
+        }
+
+        // 2) Fallback ke CountAPI
         for (const base of countApiBases) {
             const ok = await ensureKey(base);
             if (!ok) continue;
