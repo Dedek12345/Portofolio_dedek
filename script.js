@@ -569,8 +569,8 @@ window.addEventListener('resize', throttle(() => {
     }
 }, 250));
 
-// Visitor counter using CountAPI (free, no auth)
-// Counts unique visitors per browser (once) using localStorage flag to avoid duplicate increments.
+// Page view counter using CountAPI (free, no auth)
+// Setiap reload halaman akan menambah angka (page views).
 let __visitorCounterInitialized = false;
 function initializeVisitorCounter() {
     if (__visitorCounterInitialized) return; // idempotent
@@ -586,9 +586,6 @@ function initializeVisitorCounter() {
     const counterNamespace = 'dedekrahmat_portfolio_visitors';
     const countApiBase = 'https://api.countapi.xyz';
     const counterKey = `${counterNamespace}:${originKey}:${pageKey}`;
-
-    // Unique-visit flag: increment only once per browser
-    const localFlagKey = `${counterKey}:visited`;
 
     // Helper to set text with graceful fallback
     const setCountText = (val) => {
@@ -609,12 +606,8 @@ function initializeVisitorCounter() {
         return;
     }
 
-    const hasVisited = (() => {
-        try { return localStorage.getItem(localFlagKey) === '1'; } catch (_) { return false; }
-    })();
-
-    const endpoint = hasVisited ? `${countApiBase}/get/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`
-                                : `${countApiBase}/hit/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
+    // Selalu increment pada setiap load
+    const endpoint = `${countApiBase}/hit/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
 
     // Ensure the namespace/key exist by calling create if needed (best-effort)
     const initKey = async () => {
@@ -636,9 +629,6 @@ function initializeVisitorCounter() {
                 if (data && typeof data.value === 'number') {
                     setCountText(data.value);
                     try { localStorage.setItem(`${counterKey}:cachedCount`, String(data.value)); } catch (_) {}
-                    if (!hasVisited) {
-                        try { localStorage.setItem(localFlagKey, '1'); } catch (_) {}
-                    }
                 } else {
                     setCountText('—');
                 }
