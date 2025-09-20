@@ -655,8 +655,24 @@ function initializeVisitorCounter() {
                 return;
             }
         }
-        // If all bases fail, show dash
-        setCountText('—');
+        // If all bases fail, fallback to image badge counter (works via <img> increment)
+        try {
+            const labelEl = countEl.closest('.visitor-label');
+            if (labelEl) {
+                const badge = document.createElement('img');
+                // Build a unique URL key for this page for the badge service
+                const urlKey = encodeURIComponent(`${location.hostname}${location.pathname}` || 'portfolio');
+                badge.src = `https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=${urlKey}&count_bg=%2364FFDA&title_bg=%23112240&icon=&icon_color=%23E6F1FF&title=Visitors&edge_flat=false`;
+                badge.alt = 'Visitors counter';
+                badge.style.verticalAlign = 'middle';
+                // Replace the numeric counter with badge
+                countEl.replaceWith(badge);
+            } else {
+                setCountText('—');
+            }
+        } catch (_) {
+            setCountText('—');
+        }
     })();
 }
 
