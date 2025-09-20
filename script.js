@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSmoothScrolling();
     initializeNavbarScroll();
     initializeVisitorCounter();
+    initializeImageFallbacks();
 });
 
 // Navigation functionality
@@ -547,6 +548,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSmoothScrolling();
     initializeNavbarScroll();
     initializeVisitorCounter();
+    initializeImageFallbacks();
     
     // Additional features
     initializeKeyboardNavigation();
@@ -584,7 +586,11 @@ function initializeVisitorCounter() {
     const originKey = (location.hostname && location.hostname !== 'localhost') ? location.hostname : 'dedek-rahmat-portfolio-local';
     const pageKey = 'home';
     const counterNamespace = 'dedekrahmat_portfolio_visitors';
-    const countApiBase = 'https://api.countapi.xyz';
+    // Fallback hosts: jika ISP/DNS memblokir host utama
+    const countApiBases = [
+        'https://api.countapi.xyz',
+        'https://countapi.xyz'
+    ];
     const counterKey = `${counterNamespace}:${originKey}:${pageKey}`;
 
     // Helper to set text with graceful fallback
@@ -606,36 +612,67 @@ function initializeVisitorCounter() {
         return;
     }
 
-    // Selalu increment pada setiap load
-    const endpoint = `${countApiBase}/hit/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
-
-    // Ensure the namespace/key exist by calling create if needed (best-effort)
-    const initKey = async () => {
+    // Helper fetch with timeout
+    const fetchJSON = async (url, options = {}, timeoutMs = 5000) => {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeoutMs);
         try {
-            // Try a get first; if it fails, create with 0
-            const res = await fetch(`${countApiBase}/get/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`);
-            if (res.ok) return true;
-            await fetch(`${countApiBase}/create?namespace=${encodeURIComponent(counterNamespace)}&key=${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}&value=0`);
-            return true;
+            const res = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data;
         } catch (_) {
-            return false;
+            return null;
+        } finally {
+            clearTimeout(id);
         }
     };
 
-    initKey().then(() => {
-        fetch(endpoint, { cache: 'no-store' })
-            .then(r => r.json())
-            .then(data => {
-                if (data && typeof data.value === 'number') {
-                    setCountText(data.value);
-                    try { localStorage.setItem(`${counterKey}:cachedCount`, String(data.value)); } catch (_) {}
-                } else {
-                    setCountText('—');
-                }
-            })
-            .catch(() => {
-                // On error, keep cached or show dash
-                setCountText('—');
-            });
+    // Ensure key exists on a given base
+    const ensureKey = async (base) => {
+        const keyPath = `${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
+        const got = await fetchJSON(`${base}/get/${keyPath}`);
+        if (got && typeof got.value === 'number') return true;
+        const created = await fetchJSON(`${base}/create?namespace=${encodeURIComponent(counterNamespace)}&key=${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}&value=0`);
+        return !!created;
+    };
+
+    const hit = async (base) => {
+        const keyPath = `${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
+        const data = await fetchJSON(`${base}/hit/${keyPath}`);
+        if (data && typeof data.value === 'number') return data.value;
+        return null;
+    };
+
+    (async () => {
+        for (const base of countApiBases) {
+            const ok = await ensureKey(base);
+            if (!ok) continue;
+            const value = await hit(base);
+            if (typeof value === 'number') {
+                setCountText(value);
+                try { localStorage.setItem(`${counterKey}:cachedCount`, String(value)); } catch (_) {}
+                return;
+            }
+        }
+        // If all bases fail, show dash
+        setCountText('—');
+    })();
+}
+
+// Fallback untuk gambar yang gagal (404), ganti dengan placeholder agar UI tidak rusak
+function initializeImageFallbacks() {
+    const placeholder = 'https://placehold.co/600x400?text=Image+not+found';
+    const imgs = [
+        document.querySelector('.about-picture img'),
+        document.querySelector('.profile-picture img')
+    ].filter(Boolean);
+    imgs.forEach(img => {
+        // Hindari loop jika placeholder juga gagal
+        img.addEventListener('error', function onErr() {
+            if (img.dataset.fallbackApplied === '1') return;
+            img.dataset.fallbackApplied = '1';
+            img.src = placeholder;
+        });
     });
 }
