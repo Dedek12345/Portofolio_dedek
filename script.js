@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDownloadCV();
     initializeSmoothScrolling();
     initializeNavbarScroll();
+    initializeVisitorCounter();
 });
 
 // Navigation functionality
@@ -545,6 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeDownloadCV();
     initializeSmoothScrolling();
     initializeNavbarScroll();
+    initializeVisitorCounter();
     
     // Additional features
     initializeKeyboardNavigation();
@@ -566,3 +568,84 @@ window.addEventListener('resize', throttle(() => {
         hamburger.classList.remove('active');
     }
 }, 250));
+
+// Visitor counter using CountAPI (free, no auth)
+// Counts unique visitors per browser (once) using localStorage flag to avoid duplicate increments.
+let __visitorCounterInitialized = false;
+function initializeVisitorCounter() {
+    if (__visitorCounterInitialized) return; // idempotent
+    __visitorCounterInitialized = true;
+
+    const countEl = document.getElementById('visitor-count');
+    if (!countEl) return;
+
+    // Namespace the counter key with a stable identifier for this site
+    // Use your domain if deployed (e.g., dedekrahmat.com). For local files, fall back to a custom key.
+    const originKey = (location.hostname && location.hostname !== 'localhost') ? location.hostname : 'dedek-rahmat-portfolio-local';
+    const pageKey = 'home';
+    const counterNamespace = 'dedekrahmat_portfolio_visitors';
+    const countApiBase = 'https://api.countapi.xyz';
+    const counterKey = `${counterNamespace}:${originKey}:${pageKey}`;
+
+    // Unique-visit flag: increment only once per browser
+    const localFlagKey = `${counterKey}:visited`;
+
+    // Helper to set text with graceful fallback
+    const setCountText = (val) => {
+        countEl.textContent = typeof val === 'number' ? val.toLocaleString() : '—';
+    };
+
+    // If offline or file://, we can only show "—" or a locally cached number
+    try {
+        const cached = localStorage.getItem(`${counterKey}:cachedCount`);
+        if (cached) setCountText(Number(cached));
+    } catch (_) {
+        // ignore
+    }
+
+    // Do nothing if running from file:// where fetch is often blocked; allow if http/https only
+    if (!/^https?:$/i.test(location.protocol)) {
+        setCountText('—');
+        return;
+    }
+
+    const hasVisited = (() => {
+        try { return localStorage.getItem(localFlagKey) === '1'; } catch (_) { return false; }
+    })();
+
+    const endpoint = hasVisited ? `${countApiBase}/get/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`
+                                : `${countApiBase}/hit/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`;
+
+    // Ensure the namespace/key exist by calling create if needed (best-effort)
+    const initKey = async () => {
+        try {
+            // Try a get first; if it fails, create with 0
+            const res = await fetch(`${countApiBase}/get/${encodeURIComponent(counterNamespace)}/${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}`);
+            if (res.ok) return true;
+            await fetch(`${countApiBase}/create?namespace=${encodeURIComponent(counterNamespace)}&key=${encodeURIComponent(originKey)}_${encodeURIComponent(pageKey)}&value=0`);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    initKey().then(() => {
+        fetch(endpoint, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+                if (data && typeof data.value === 'number') {
+                    setCountText(data.value);
+                    try { localStorage.setItem(`${counterKey}:cachedCount`, String(data.value)); } catch (_) {}
+                    if (!hasVisited) {
+                        try { localStorage.setItem(localFlagKey, '1'); } catch (_) {}
+                    }
+                } else {
+                    setCountText('—');
+                }
+            })
+            .catch(() => {
+                // On error, keep cached or show dash
+                setCountText('—');
+            });
+    });
+}
